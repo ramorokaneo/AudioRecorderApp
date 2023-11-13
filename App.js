@@ -140,7 +140,7 @@ export default function App() {
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
             <View style={styles.audioItem}>
-              <Text>{item.fileName}</Text>
+              <Text style={styles.audioFileName}>{item.fileName}</Text>
               <View style={styles.audioButtons}>
                 <TouchableOpacity onPress={() => handlePlayButtonPress(item)}>
                   <FontAwesome name="play-circle" size={32} color="green" />
@@ -160,6 +160,7 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#f0f0f0',
   },
   innerContainer: {
     flex: 1,
@@ -173,10 +174,18 @@ const styles = StyleSheet.create({
     height: 128,
     borderRadius: 64,
     backgroundColor: 'purple',
-    marginTop: 96,
+    marginTop: 66,
+    marginBottom: 16,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
   },
   recordingStatusText: {
     marginTop: 26,
+    fontSize: 18,
+    color: '#333',
   },
   audioItem: {
     flexDirection: 'row',
@@ -184,13 +193,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginVertical: 12,
     padding: 16,
-    backgroundColor: 'blue',
+    backgroundColor: 'white',
     borderRadius: 8,
+    elevation: 4,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2},
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
-    
+  },
+  audioFileName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
   },
   audioButtons: {
     flexDirection: 'row',
