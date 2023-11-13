@@ -1,30 +1,15 @@
-import { Text, TouchableOpacity, View, StyleSheet } from 'react-native';
 import React, { useEffect, useState } from 'react';
+import { Text, TouchableOpacity, View, StyleSheet, FlatList, SafeAreaView } from 'react-native';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
 import { FontAwesome } from '@expo/vector-icons';
 import { Permissions } from 'expo';
-import { firebase } from '@react-native-firebase/app';
-import storage from '@react-native-firebase/storage';
-
-
-const firebaseConfig = {
-  apiKey: 'AIzaSyBQBLgDsVv3Tl0oWizGaAHQ6WYXh0v_CUs',
-  authDomain: 'the-app-7f567.firebaseapp.com',
-  projectId: 'the-app-7f567',
-  storageBucket: 'the-app-7f567.appspot.com',
-  messagingSenderId: '398014330647',
-  appId: '1:398014330647:web:a03202093f78f5a56aa952',
-};
-
-if (!firebase.apps.length) {
-  firebase.initializeApp(firebaseConfig);
-}
 
 export default function App() {
   const [recording, setRecording] = useState(null);
   const [recordingStatus, setRecordingStatus] = useState('idle');
   const [audioPermission, setAudioPermission] = useState(null);
+  const [recordedAudioList, setRecordedAudioList] = useState([]);
 
   useEffect(() => {
     async function getPermissionsAsync() {
@@ -38,10 +23,8 @@ export default function App() {
       }
     }
 
-    // Call function to get permission
     getPermissionsAsync();
 
-    // Cleanup upon first render
     return () => {
       if (recording) {
         stopRecording();
@@ -51,7 +34,6 @@ export default function App() {
 
   async function startRecording() {
     try {
-      // needed for iOS
       if (audioPermission) {
         await Audio.setAudioModeAsync({
           allowsRecordingIOS: true,
@@ -77,24 +59,24 @@ export default function App() {
         await recording.stopAndUnloadAsync();
         const recordingUri = recording.getURI();
 
-        // Create a file name for the recording
         const fileName = `recording-${Date.now()}.caf`;
 
-        // Upload the recording to Firebase Storage
-        const reference = storage().ref(`recordings/${fileName}`);
-        await reference.putFile(recordingUri);
+        const newDirectory = FileSystem.documentDirectory + 'recordings/';
+        await FileSystem.makeDirectoryAsync(newDirectory, { intermediates: true });
+        const newRecordingUri = newDirectory + fileName;
+        await FileSystem.moveAsync({
+          from: recordingUri,
+          to: newRecordingUri,
+        });
 
-        // Get the download URL for the uploaded file
-        const downloadURL = await reference.getDownloadURL();
-
-        // Now you can use the downloadURL as needed, e.g., store it in your database
-
-        // This is for simply playing the sound back
         const playbackObject = new Audio.Sound();
-        await playbackObject.loadAsync({ uri: downloadURL });
-        await playbackObject.playAsync();
+        await playbackObject.loadAsync({ uri: newRecordingUri });
 
-        // reset our states to record again
+        setRecordedAudioList((prevList) => [
+          ...prevList,
+          { id: Date.now().toString(), fileName, playbackObject },
+        ]);
+
         setRecording(null);
         setRecordingStatus('stopped');
       }
@@ -103,26 +85,83 @@ export default function App() {
     }
   }
 
-  async function handleRecordButtonPress() {
+  const handleRecordButtonPress = () => {
     if (recording) {
       stopRecording();
     } else {
       startRecording();
     }
-  }
+  };
+
+  const handlePlayback = async (playbackObject) => {
+    try {
+      await playbackObject.replayAsync();
+    } catch (error) {
+      console.error('Failed to replay audio', error);
+    }
+  };
+
+  const handlePlayButtonPress = async (item) => {
+    try {
+      await item.playbackObject.replayAsync();
+    } catch (error) {
+      console.error('Failed to replay audio', error);
+    }
+  };
+
+  const handleDeleteButtonPress = async (item) => {
+    try {
+      // Stop playback if it's currently playing
+      if (item.playbackObject._loaded) {
+        await item.playbackObject.unloadAsync();
+      }
+
+      // Delete the audio file from the file system using the constructed file path
+      const filePath = FileSystem.documentDirectory + 'recordings/' + item.fileName;
+      await FileSystem.deleteAsync(filePath);
+
+      // Remove the item from the recordedAudioList
+      setRecordedAudioList((prevList) => prevList.filter((audioItem) => audioItem.id !== item.id));
+    } catch (error) {
+      console.error('Failed to delete audio', error);
+    }
+  };
 
   return (
-    <View style={styles.container}>
-      <TouchableOpacity style={styles.button} onPress={handleRecordButtonPress}>
-        <FontAwesome name={recording ? 'stop-circle' : 'circle'} size={64} color="white" />
-      </TouchableOpacity>
-      <Text style={styles.recordingStatusText}>{`Recording status: ${recordingStatus}`}</Text>
-    </View>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.innerContainer}>
+        <TouchableOpacity style={styles.button} onPress={handleRecordButtonPress}>
+          <FontAwesome name={recording ? 'stop-circle' : 'circle'} size={64} color="white" />
+        </TouchableOpacity>
+        <Text style={styles.recordingStatusText}>{`Recording status: ${recordingStatus}`}</Text>
+
+        <FlatList
+          data={recordedAudioList}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <View style={styles.audioItem}>
+              <Text>{item.fileName}</Text>
+              <View style={styles.audioButtons}>
+                <TouchableOpacity onPress={() => handlePlayButtonPress(item)}>
+                  <FontAwesome name="play-circle" size={32} color="green" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleDeleteButtonPress(item)}>
+                  <FontAwesome name="trash" size={32} color="red" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        />
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  innerContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -133,9 +172,30 @@ const styles = StyleSheet.create({
     width: 128,
     height: 128,
     borderRadius: 64,
-    backgroundColor: 'red',
+    backgroundColor: 'purple',
+    marginTop: 96,
   },
   recordingStatusText: {
-    marginTop: 16,
+    marginTop: 26,
+  },
+  audioItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginVertical: 12,
+    padding: 16,
+    backgroundColor: 'blue',
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2},
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    
+  },
+  audioButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: 64,
   },
 });
